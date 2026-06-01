@@ -79,6 +79,11 @@ const materialTextInput = $('material-text-input');
 const materialTextSave = $('material-text-save');
 const materialTextCancel = $('material-text-cancel');
 
+// Lightbox
+const lightboxOverlay = $('lightbox-overlay');
+const lightboxImage = $('lightbox-image');
+const lightboxClose = $('lightbox-close');
+
 // ====================== TOAST ======================
 let toastTimeout = null;
 function showToast(message, type = 'success') {
@@ -447,7 +452,7 @@ function renderMaterialsList(materials) {
       img.src = mat.content;
       img.alt = mat.name;
       img.title = 'Click to enlarge';
-      img.onclick = () => window.open(mat.content, '_blank');
+      img.onclick = () => openLightbox(mat.content);
       item.appendChild(img);
     } else {
       const icon = document.createElement('div');
@@ -517,12 +522,18 @@ async function saveCurrentMaterials(id, materials) {
     try {
       await supabaseUpdate(currentSession, id, { materials });
     } catch (err) {
-      console.error('Save materials:', err);
-      showToast('Error saving materials.', 'error');
+      console.error('Save materials Supabase:', err);
+      showToast('Error saving materials: ' + (err.message || 'Supabase error'), 'error');
       return;
     }
   } else {
-    localSaveSchedules(currentUser.id, schedules);
+    try {
+      localSaveSchedules(currentUser.id, schedules);
+    } catch (err) {
+      console.error('Save materials localStorage:', err);
+      showToast('Error saving materials: ' + (err.message || 'Storage error'), 'error');
+      return;
+    }
   }
   renderSchedule();
   // Re-open the modal with the same materials list
@@ -533,25 +544,30 @@ async function saveCurrentMaterials(id, materials) {
 }
 
 async function addTextMaterialToCurrent() {
-  const text = materialTextInput.value.trim();
-  if (!text) { showToast('Enter some text.', 'error'); return; }
-  if (currentMaterialsSubjectId === null) return;
-  const item = schedules.find(s => s.id === currentMaterialsSubjectId);
-  if (!item) return;
-  const materials = item.materials || [];
-  materials.push({
-    id: genId(),
-    type: 'text',
-    name: 'Text note',
-    content: text,
-    mimeType: 'text/plain',
-    createdAt: new Date().toISOString()
-  });
-  item.materials = materials;
-  materialTextInput.value = '';
-  materialTextArea.style.display = 'none';
-  addingMaterialText = false;
-  await saveCurrentMaterials(currentMaterialsSubjectId, materials);
+  try {
+    const text = materialTextInput.value.trim();
+    if (!text) { showToast('Enter some text.', 'error'); return; }
+    if (currentMaterialsSubjectId === null) { console.warn('No subject selected'); return; }
+    const item = schedules.find(s => s.id === currentMaterialsSubjectId);
+    if (!item) { console.warn('Subject not found in schedules:', currentMaterialsSubjectId); return; }
+    const materials = item.materials || [];
+    materials.push({
+      id: genId(),
+      type: 'text',
+      name: 'Text note',
+      content: text,
+      mimeType: 'text/plain',
+      createdAt: new Date().toISOString()
+    });
+    item.materials = materials;
+    materialTextInput.value = '';
+    materialTextArea.style.display = 'none';
+    addingMaterialText = false;
+    await saveCurrentMaterials(currentMaterialsSubjectId, materials);
+  } catch (err) {
+    console.error('addTextMaterialToCurrent error:', err);
+    showToast('Error saving material: ' + (err.message || '?'), 'error');
+  }
 }
 
 async function handleMaterialFileUpload(file) {
@@ -580,6 +596,17 @@ async function handleMaterialFileUpload(file) {
   }
 }
 
+// ====================== LIGHTBOX ======================
+function openLightbox(src) {
+  lightboxImage.src = src;
+  lightboxOverlay.style.display = 'flex';
+}
+
+function closeLightbox() {
+  lightboxOverlay.style.display = 'none';
+  lightboxImage.src = '';
+}
+
 // ====================== EVENT LISTENERS ======================
 loginForm.addEventListener('submit', handleLogin);
 signupForm.addEventListener('submit', handleSignup);
@@ -600,6 +627,7 @@ colorPresets.addEventListener('click', (e) => { const s = e.target.closest('.col
 toggleTheme.addEventListener('click', toggleThemeHandler);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (lightboxOverlay.style.display === 'flex') { closeLightbox(); return; }
     if (modalOverlay.style.display === 'flex') { closeModal(); return; }
     if (deleteOverlay.style.display === 'flex') { closeDeleteModal(); return; }
     if (materialsOverlay.style.display === 'flex') {
@@ -633,6 +661,12 @@ materialFileInput.addEventListener('change', (e) => {
 });
 materialsOverlay.addEventListener('click', (e) => {
   if (e.target === materialsOverlay) closeMaterialsModal();
+});
+
+// Lightbox
+lightboxClose.addEventListener('click', closeLightbox);
+lightboxOverlay.addEventListener('click', (e) => {
+  if (e.target === lightboxOverlay) closeLightbox();
 });
 
 // ====================== INIT ======================
