@@ -11,6 +11,8 @@ let deleteTargetId = null;
 let isOnline = false; // true = Supabase, false = localStorage
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+let currentMaterialsSubjectId = null;
+let addingMaterialText = false;
 
 // ====================== DOM HELPERS ======================
 const $ = (id) => document.getElementById(id);
@@ -62,6 +64,20 @@ const deleteConfirm = $('delete-confirm');
 const deleteSubjectName = $('delete-subject-name');
 const toggleTheme = $('toggle-theme');
 const toast = $('toast');
+
+// Materials modal
+const materialsOverlay = $('materials-overlay');
+const materialsTitle = $('materials-title');
+const materialsList = $('materials-list');
+const materialsEmpty = $('materials-empty');
+const materialsClose = $('materials-close');
+const materialsAddText = $('materials-add-text');
+const materialsAddFile = $('materials-add-file');
+const materialFileInput = $('material-file-input');
+const materialTextArea = $('material-text-area');
+const materialTextInput = $('material-text-input');
+const materialTextSave = $('material-text-save');
+const materialTextCancel = $('material-text-cancel');
 
 // ====================== TOAST ======================
 let toastTimeout = null;
@@ -250,7 +266,7 @@ async function saveSubject(formData) {
   if (isOnline) {
     try {
       if (isEdit) await supabaseUpdate(currentSession, id, { subject: name, day, start_time: start, end_time: end, notes, color });
-      else await supabaseInsert(currentSession, { user_id: currentUser.id, subject: name, day, start_time: start, end_time: end, notes, color, status: 'pending' });
+      else await supabaseInsert(currentSession, { user_id: currentUser.id, subject: name, day, start_time: start, end_time: end, notes, color, status: 'pending', materials: [] });
       showToast(isEdit ? 'Updated!' : 'Added!'); closeModal(); await loadSchedules();
     } catch (err) { console.error('Save:', err); showToast('Error saving: ' + (err.message || '?'), 'error'); }
   } else {
@@ -259,7 +275,7 @@ async function saveSubject(formData) {
       const idx = all.findIndex(s => s.id === id);
       if (idx > -1) { all[idx] = { ...all[idx], subject: name, day, start_time: start, end_time: end, notes, color }; }
     } else {
-      all.push({ id: genId(), user_id: currentUser.id, subject: name, day, start_time: start, end_time: end, notes, color, status: 'pending', created_at: new Date().toISOString() });
+      all.push({ id: genId(), user_id: currentUser.id, subject: name, day, start_time: start, end_time: end, notes, color, materials: [], status: 'pending', created_at: new Date().toISOString() });
     }
     localSaveSchedules(currentUser.id, all);
     showToast(isEdit ? 'Updated!' : 'Added!'); closeModal();
@@ -329,10 +345,14 @@ function createStudyCard(item) {
     </div>
     <div class="card-time">${t}</div>
     ${item.notes ? `<div class="card-notes">${escapeHtml(item.notes)}</div>` : ''}
-    <div class="card-footer"><label class="status-toggle"><input type="checkbox" class="status-checkbox" data-id="${item.id}" ${item.status === 'completed' ? 'checked' : ''}><span class="status-label">${item.status === 'completed' ? 'Done' : 'Pending'}</span></label></div>`;
+    <div class="card-footer">
+      <label class="status-toggle"><input type="checkbox" class="status-checkbox" data-id="${item.id}" ${item.status === 'completed' ? 'checked' : ''}><span class="status-label">${item.status === 'completed' ? 'Done' : 'Pending'}</span></label>
+      <button class="card-action-btn materials-btn" data-id="${item.id}" title="Materials">📎${item.materials && item.materials.length ? `<span class="material-badge">${item.materials.length}</span>` : ''}</button>
+    </div>`;
   card.querySelector('.edit-btn').onclick = (e) => { e.stopPropagation(); openEditModal(item); };
   card.querySelector('.delete-btn').onclick = (e) => { e.stopPropagation(); openDeleteModal(item); };
   card.querySelector('.status-checkbox').onchange = (e) => { e.stopPropagation(); toggleSubjectStatus(item.id, e.target.checked ? 'completed' : 'pending'); };
+  card.querySelector('.materials-btn').onclick = (e) => { e.stopPropagation(); openMaterialsModal(item); };
   return card;
 }
 
@@ -367,6 +387,199 @@ function formatTime(s) {
 }
 function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+// ====================== MATERIALS ======================
+function getFileIcon(mimeType) {
+  if (!mimeType) return '📄';
+  if (mimeType.startsWith('image/')) return '🖼️';
+  if (mimeType.includes('pdf')) return '📕';
+  if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('sheet')) return '📊';
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📽️';
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('compress')) return '🗜️';
+  if (mimeType.startsWith('text/')) return '📄';
+  return '📎';
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function openMaterialsModal(item) {
+  if (!item) return;
+  currentMaterialsSubjectId = item.id;
+  addingMaterialText = false;
+  materialTextArea.style.display = 'none';
+  materialTextInput.value = '';
+  materialsTitle.textContent = 'Materials — ' + escapeHtml(item.subject);
+  renderMaterialsList(item.materials || []);
+  materialsOverlay.style.display = 'flex';
+}
+
+function closeMaterialsModal() {
+  materialsOverlay.style.display = 'none';
+  currentMaterialsSubjectId = null;
+  addingMaterialText = false;
+  materialTextArea.style.display = 'none';
+  materialTextInput.value = '';
+}
+
+function renderMaterialsList(materials) {
+  materialsList.innerHTML = '';
+  if (!materials || materials.length === 0) {
+    materialsList.style.display = 'none';
+    materialsEmpty.style.display = 'flex';
+    return;
+  }
+  materialsList.style.display = 'flex';
+  materialsEmpty.style.display = 'none';
+
+  materials.forEach((mat, idx) => {
+    const item = document.createElement('div');
+    item.className = 'material-item';
+
+    // Icon or thumbnail
+    if (mat.type === 'file' && mat.mimeType && mat.mimeType.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.className = 'material-thumb';
+      img.src = mat.content;
+      img.alt = mat.name;
+      img.title = 'Click to enlarge';
+      img.onclick = () => window.open(mat.content, '_blank');
+      item.appendChild(img);
+    } else {
+      const icon = document.createElement('div');
+      icon.className = 'material-icon';
+      icon.textContent = mat.type === 'text' ? '📝' : getFileIcon(mat.mimeType);
+      item.appendChild(icon);
+    }
+
+    // Info
+    const info = document.createElement('div');
+    info.className = 'material-info';
+    info.innerHTML = `<div class="material-name">${escapeHtml(mat.name)}</div>
+      <div class="material-meta">${mat.type === 'text' ? 'Text note' : formatFileSize(mat.size)}${mat.createdAt ? ' · ' + new Date(mat.createdAt).toLocaleDateString() : ''}</div>`;
+
+    // For text type, show content preview
+    if (mat.type === 'text' && mat.content) {
+      const textDiv = document.createElement('div');
+      textDiv.className = 'material-text-content';
+      const isLong = mat.content.length > 200;
+      textDiv.textContent = isLong ? mat.content.slice(0, 200) + '…' : mat.content;
+      info.appendChild(textDiv);
+      if (isLong) {
+        const expandBtn = document.createElement('button');
+        expandBtn.className = 'material-expand-btn';
+        expandBtn.textContent = 'Show all';
+        expandBtn.onclick = () => {
+          if (textDiv.classList.contains('expanded')) {
+            textDiv.classList.remove('expanded');
+            textDiv.textContent = mat.content.slice(0, 200) + '…';
+            expandBtn.textContent = 'Show all';
+          } else {
+            textDiv.classList.add('expanded');
+            textDiv.textContent = mat.content;
+            expandBtn.textContent = 'Show less';
+          }
+        };
+        info.appendChild(expandBtn);
+      }
+    }
+
+    item.appendChild(info);
+
+    // Delete button
+    const del = document.createElement('button');
+    del.className = 'material-delete';
+    del.textContent = '✕';
+    del.title = 'Delete material';
+    del.onclick = () => deleteMaterialFromCurrent(idx);
+    item.appendChild(del);
+
+    materialsList.appendChild(item);
+  });
+}
+
+async function deleteMaterialFromCurrent(index) {
+  if (currentMaterialsSubjectId === null) return;
+  const item = schedules.find(s => s.id === currentMaterialsSubjectId);
+  if (!item || !item.materials) return;
+  const materials = [...item.materials];
+  materials.splice(index, 1);
+  item.materials = materials;
+  await saveCurrentMaterials(currentMaterialsSubjectId, materials);
+}
+
+async function saveCurrentMaterials(id, materials) {
+  if (isOnline) {
+    try {
+      await supabaseUpdate(currentSession, id, { materials });
+    } catch (err) {
+      console.error('Save materials:', err);
+      showToast('Error saving materials.', 'error');
+      return;
+    }
+  } else {
+    localSaveSchedules(currentUser.id, schedules);
+  }
+  renderSchedule();
+  // Re-open the modal with the same materials list
+  const item = schedules.find(s => s.id === id);
+  if (item && materialsOverlay.style.display === 'flex') {
+    renderMaterialsList(item.materials || []);
+  }
+}
+
+async function addTextMaterialToCurrent() {
+  const text = materialTextInput.value.trim();
+  if (!text) { showToast('Enter some text.', 'error'); return; }
+  if (currentMaterialsSubjectId === null) return;
+  const item = schedules.find(s => s.id === currentMaterialsSubjectId);
+  if (!item) return;
+  const materials = item.materials || [];
+  materials.push({
+    id: genId(),
+    type: 'text',
+    name: 'Text note',
+    content: text,
+    mimeType: 'text/plain',
+    createdAt: new Date().toISOString()
+  });
+  item.materials = materials;
+  materialTextInput.value = '';
+  materialTextArea.style.display = 'none';
+  addingMaterialText = false;
+  await saveCurrentMaterials(currentMaterialsSubjectId, materials);
+}
+
+async function handleMaterialFileUpload(file) {
+  if (!file) return;
+  if (currentMaterialsSubjectId === null) return;
+  const item = schedules.find(s => s.id === currentMaterialsSubjectId);
+  if (!item) return;
+  try {
+    const base64 = await fileToBase64(file);
+    const materials = item.materials || [];
+    materials.push({
+      id: genId(),
+      type: 'file',
+      name: file.name,
+      content: base64,
+      mimeType: file.type,
+      size: file.size,
+      createdAt: new Date().toISOString()
+    });
+    item.materials = materials;
+    materialFileInput.value = '';
+    await saveCurrentMaterials(currentMaterialsSubjectId, materials);
+  } catch (err) {
+    console.error('File upload:', err);
+    showToast('Error uploading file.', 'error');
+  }
+}
+
 // ====================== EVENT LISTENERS ======================
 loginForm.addEventListener('submit', handleLogin);
 signupForm.addEventListener('submit', handleSignup);
@@ -385,9 +598,42 @@ deleteOverlay.addEventListener('click', (e) => { if (e.target === deleteOverlay)
 deleteConfirm.addEventListener('click', () => { if (deleteTargetId) deleteSubject(deleteTargetId); });
 colorPresets.addEventListener('click', (e) => { const s = e.target.closest('.color-swatch'); if (!s) return; subjectColor.value = s.dataset.color; updateColorPresets(s.dataset.color); });
 toggleTheme.addEventListener('click', toggleThemeHandler);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (modalOverlay.style.display === 'flex') closeModal(); if (deleteOverlay.style.display === 'flex') closeDeleteModal(); } });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (modalOverlay.style.display === 'flex') { closeModal(); return; }
+    if (deleteOverlay.style.display === 'flex') { closeDeleteModal(); return; }
+    if (materialsOverlay.style.display === 'flex') {
+      if (addingMaterialText) { addingMaterialText = false; materialTextArea.style.display = 'none'; materialTextInput.value = ''; return; }
+      closeMaterialsModal();
+    }
+  }
+});
 createProfileBtn.addEventListener('click', handleCreateProfile);
 profileName.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleCreateProfile(); });
+
+// Materials modal
+materialsClose.addEventListener('click', closeMaterialsModal);
+materialsAddText.addEventListener('click', () => {
+  if (addingMaterialText) return;
+  addingMaterialText = true;
+  materialTextArea.style.display = 'flex';
+  materialTextInput.focus();
+});
+materialTextCancel.addEventListener('click', () => {
+  addingMaterialText = false;
+  materialTextArea.style.display = 'none';
+  materialTextInput.value = '';
+});
+materialTextSave.addEventListener('click', addTextMaterialToCurrent);
+materialsAddFile.addEventListener('click', () => materialFileInput.click());
+materialFileInput.addEventListener('change', (e) => {
+  if (e.target.files && e.target.files[0]) {
+    handleMaterialFileUpload(e.target.files[0]);
+  }
+});
+materialsOverlay.addEventListener('click', (e) => {
+  if (e.target === materialsOverlay) closeMaterialsModal();
+});
 
 // ====================== INIT ======================
 (async function init() {

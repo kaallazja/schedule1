@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS study_schedules (
   notes TEXT DEFAULT '',
   color TEXT DEFAULT '#6366f1',
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
+  materials JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
