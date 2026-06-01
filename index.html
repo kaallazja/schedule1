@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Study Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ======================== AUTH SCREEN ======================== -->
+  <div id="auth-container" class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo">📚</div>
+        <h1>Study Planner</h1>
+        <p class="auth-subtitle">Organize your study schedule</p>
+      </div>
+
+      <!-- Login Form -->
+      <form id="login-form" class="auth-form">
+        <div id="login-error" class="form-error"></div>
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" required placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="login-btn">
+          <span class="btn-text">Sign In</span>
+          <span class="btn-loader" style="display:none"></span>
+        </button>
+        <p class="auth-switch">
+          Don't have an account?
+          <a href="#" id="show-signup">Create one</a>
+        </p>
+      </form>
+
+      <!-- Signup Form -->
+      <form id="signup-form" class="auth-form" style="display:none">
+        <div id="signup-error" class="form-error"></div>
+        <div class="form-group">
+          <label for="signup-email">Email</label>
+          <input type="email" id="signup-email" required placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="signup-password">Password</label>
+          <input type="password" id="signup-password" required placeholder="At least 6 characters" minlength="6" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="signup-confirm">Confirm Password</label>
+          <input type="password" id="signup-confirm" required placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="signup-btn">
+          <span class="btn-text">Create Account</span>
+          <span class="btn-loader" style="display:none"></span>
+        </button>
+        <p class="auth-switch">
+          Already have an account?
+          <a href="#" id="show-login">Sign in</a>
+        </p>
+      </form>
+
+      <!-- Local Profile Selector (shown when opened as file://) -->
+      <div id="profile-form" class="auth-form" style="display:none">
+        <div class="profile-header">
+          <div class="auth-logo">👤</div>
+          <p class="auth-subtitle" style="margin-bottom: 12px;">Choose or create a profile</p>
+        </div>
+        <div id="profile-list" class="profile-list"></div>
+        <div class="divider"><span>or new profile</span></div>
+        <div class="form-group">
+          <label for="profile-name">Profile Name</label>
+          <input type="text" id="profile-name" placeholder="e.g. Student 1" maxlength="30">
+        </div>
+        <button type="button" class="btn btn-primary btn-full" id="create-profile-btn">+ Create Profile</button>
+        <p class="mode-badge">📁 Using local storage — data stays on this device</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================== MAIN APP ======================== -->
+  <div id="app-container" class="app-container" style="display:none">
+
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <span class="app-logo">📚</span>
+        <h1 class="app-title">Study Planner</h1>
+      </div>
+      <div class="header-right">
+        <span id="user-email" class="user-badge"></span>
+        <button id="toggle-theme" class="btn btn-icon" title="Toggle dark/light mode">🌙</button>
+        <button id="logout-btn" class="btn btn-ghost">Logout</button>
+        <button id="add-subject-btn" class="btn btn-primary">
+          <span class="plus-icon">+</span> Add Subject
+        </button>
+      </div>
+    </header>
+
+    <!-- Week Navigation -->
+    <div class="week-info">
+      <span id="week-label" class="week-label"></span>
+    </div>
+
+    <!-- Schedule Grid -->
+    <div class="schedule-wrapper">
+      <div id="schedule-grid" class="schedule-grid"></div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state" style="display:none">
+      <div class="empty-icon">📖</div>
+      <h2>Your schedule is empty</h2>
+      <p>Start building your study plan — add your first subject!</p>
+      <button id="empty-add-btn" class="btn btn-primary">+ Add Your First Subject</button>
+    </div>
+  </div>
+
+  <!-- ======================== ADD / EDIT MODAL ======================== -->
+  <div id="modal-overlay" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Add Subject</h2>
+        <button id="modal-close" class="btn btn-icon modal-close-btn" title="Close">&times;</button>
+      </div>
+      <form id="subject-form">
+        <input type="hidden" id="subject-id">
+
+        <div class="form-group">
+          <label for="subject-name">Subject Name</label>
+          <input type="text" id="subject-name" required placeholder="e.g. Mathematics">
+        </div>
+
+        <div class="form-group">
+          <label for="subject-day">Day</label>
+          <select id="subject-day" required>
+            <option value="">&mdash; Select day &mdash;</option>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="start-time">Start Time</label>
+            <input type="time" id="start-time" required>
+          </div>
+          <div class="form-group">
+            <label for="end-time">End Time</label>
+            <input type="time" id="end-time" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="subject-notes">Notes <span class="optional">(optional)</span></label>
+          <textarea id="subject-notes" rows="2" placeholder="Topics, chapters, or reminders..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Color</label>
+          <div class="color-picker-row">
+            <input type="color" id="subject-color" value="#6366f1">
+            <div class="color-presets" id="color-presets">
+              <button type="button" class="color-swatch" data-color="#6366f1" style="background:#6366f1" title="Indigo"></button>
+              <button type="button" class="color-swatch" data-color="#3b82f6" style="background:#3b82f6" title="Blue"></button>
+              <button type="button" class="color-swatch" data-color="#22c55e" style="background:#22c55e" title="Green"></button>
+              <button type="button" class="color-swatch" data-color="#eab308" style="background:#eab308" title="Yellow"></button>
+              <button type="button" class="color-swatch" data-color="#f97316" style="background:#f97316" title="Orange"></button>
+              <button type="button" class="color-swatch" data-color="#ef4444" style="background:#ef4444" title="Red"></button>
+              <button type="button" class="color-swatch" data-color="#ec4899" style="background:#ec4899" title="Pink"></button>
+              <button type="button" class="color-swatch" data-color="#a855f7" style="background:#a855f7" title="Purple"></button>
+              <button type="button" class="color-swatch" data-color="#14b8a6" style="background:#14b8a6" title="Teal"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel" class="btn btn-ghost">Cancel</button>
+          <button type="submit" id="modal-save" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ======================== CONFIRM DELETE MODAL ======================== -->
+  <div id="delete-overlay" class="modal-overlay" style="display:none">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2>Delete Subject</h2>
+        <button id="delete-close" class="btn btn-icon modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete <strong id="delete-subject-name"></strong>?</p>
+        <p class="text-muted">This action cannot be undone.</p>
+      </div>
+      <div class="modal-actions">
+        <button id="delete-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="delete-confirm" class="btn btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================== TOAST ======================== -->
+  <div id="toast" class="toast"></div>
+
+  <script src="supabase-config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# Local overrides (create your own copy if needed)
+*.local.*
